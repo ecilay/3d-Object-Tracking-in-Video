@@ -1,11 +1,11 @@
 import numpy as np
 import cv2
 import pandas as pd
-#change video name
 def track(video):
+    # further input needs points from our methods
     cap = cv2.VideoCapture(video)
 
-    # params for ShiTomasi corner detection. Ignore with our own implementation
+    # params for ShiTomasi corner detection. Replace with our own implementation
     feature_params = dict( maxCorners = 100,
                        qualityLevel = 0.3,
                        minDistance = 7,
@@ -49,10 +49,12 @@ def track(video):
         # Now update the previous frame and previous points
         old_gray = frame_gray.copy()
         p0 = good_new.reshape(-1,1,2)
+    # will add the return part after
     cap.release()
     cv2.destroyAllWindows()
 
 if __name__ == '__main__':
+    #change video name
     track('/Users/alliey/Desktop/231A/project/dragon.mov')
 
 
