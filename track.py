@@ -1,9 +1,11 @@
 import numpy as np
 import cv2
 import pandas as pd
+from feature_detection import shiTomasiCornerDetector 
+
 def track(video):
     # further input needs points from our methods
-    cap = cv2.VideoCapture(video)
+    cap = cv2.VideoCapture(0)
 
     # params for ShiTomasi corner detection. Replace with our own implementation
     feature_params = dict( maxCorners = 100,
@@ -20,7 +22,9 @@ def track(video):
     # Take first frame and find corners in it
     ret, old_frame = cap.read()
     old_gray = cv2.cvtColor(old_frame, cv2.COLOR_BGR2GRAY)
-    p0 = cv2.goodFeaturesToTrack(old_gray, mask = None, **feature_params)
+    #p0 = cv2.goodFeaturesToTrack(old_gray, mask = None, **feature_params)
+    p0 = shiTomasiCornerDetector(old_gray, (7,7), 100, 0.3, 7) 
+    points = []
     points.append(p0)
 
     # Create a mask image for drawing purposes
