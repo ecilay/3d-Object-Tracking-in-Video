@@ -3,7 +3,7 @@ tracking object in video and reconstruction in 3D
 
 Steps:
     
-    1, segmentation
+    1, segmentation: FLKDE.py
     
     2, detection: detect.py
     
