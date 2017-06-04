@@ -194,6 +194,7 @@ if __name__ == '__main__':
                   maxLevel = 2,
                   criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.05))
 
+    # prepare input images (original * mask)
     mask_image0 = scipy.misc.imread(mask_image_dir+'binary_mask_for_frame_0.png')
     original_image0 = scipy.misc.imread(original_image_dir + '00000001.jpg', flatten = True)
     mask_image1 = scipy.misc.imread(mask_image_dir+'binary_mask_for_frame_40.png')
@@ -208,6 +209,8 @@ if __name__ == '__main__':
     im_gray0 = cv2.cvtColor(im0, cv2.COLOR_BGR2GRAY)
     im1 = cv2.imread(image1)
     im_gray1 = cv2.cvtColor(im1, cv2.COLOR_BGR2GRAY)
+
+    # find correspondances on two images
     pt0 = shiTomasiCornerDetector(im_gray0, (2,2), 600, 0.001, 5)
     pt0 = pt0.reshape(len(pt0),2)
     pt1, st, err = cv2.calcOpticalFlowPyrLK(im_gray0, im_gray1, pt0, None, **lk_params)
