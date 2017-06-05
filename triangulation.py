@@ -15,9 +15,9 @@ from epipolar_utils import *
 import random
 
 
-def factorization_method(points_im1, points_im2):
+def factorization_method(D):
     # TODO: Implement this method!
-    D = np.vstack([points_im1.T[0:2], points_im2.T[0:2]])
+    #D = np.vstack([points_im1.T[0:2], points_im2.T[0:2]])
     u,s,v = np.linalg.svd(D)
     u = u[:,[0,1,2]]
     s = s[0:3]
@@ -180,103 +180,146 @@ def ransac_estimate_fundamental(points1, points2):
         if num_inliners > max_inliners:
             max_inliners = num_inliners
             f = f_temp
-            print max_inliners
             #print errors
     print "got "+str(max_inliners) + " out of " + str(num_points) + " points"
     return f
 
 
 if __name__ == '__main__':
-    run_pipeline = False
-    mask_image_dir = 'data/masks/cup/'
-    original_image_dir = 'data/vot/cup/'
+    category = 'juice'
+    print "this will construct a " + category
     lk_params = dict( winSize  = (25,25),
                   maxLevel = 2,
                   criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 10, 0.05))
 
-    # prepare input images (original * mask)
-    mask_image0 = scipy.misc.imread(mask_image_dir+'binary_mask_for_frame_0.png')
-    original_image0 = scipy.misc.imread(original_image_dir + '00000001.jpg', flatten = True)
-    mask_image1 = scipy.misc.imread(mask_image_dir+'binary_mask_for_frame_40.png')
-    original_image1 = scipy.misc.imread(original_image_dir + '00000041.jpg', flatten = True)
-    im0 = mask_image0 * original_image0
-    scipy.misc.imsave('data/multiply/m0.png', im0)
-    im1 = mask_image1 * original_image1
-    scipy.misc.imsave('data/multiply/m40.png', im1)
-    image0 = 'data/multiply/m0.png'
-    image1 = 'data/multiply/m40.png'
-    im0 = cv2.imread(image0)
-    im_gray0 = cv2.cvtColor(im0, cv2.COLOR_BGR2GRAY)
-    im1 = cv2.imread(image1)
-    im_gray1 = cv2.cvtColor(im1, cv2.COLOR_BGR2GRAY)
+    # prepare input images (original * mask) with num_images to use, in frame_counts
+    frame_counts = [0,20,40] # choose the frames 
 
-    # find correspondances on two images
-    pt0 = shiTomasiCornerDetector(im_gray0, (2,2), 600, 0.001, 5)
+
+    im_grays = []
+    num_images = len(frame_counts)
+    for i in range(num_images):
+        mask_image = scipy.misc.imread('data/mask/'+category+'/binary_mask_for_frame_'+str(frame_counts[i])+'.png')
+        mask_image = mask_image/mask_image.max()
+        image_num = '0'*(8-len(str(frame_counts[i]))) + str(frame_counts[i]+1)
+        original_image = scipy.misc.imread('data/vot/'+category+'/'+image_num+'.jpg', flatten = True)
+        im = mask_image * original_image
+        scipy.misc.imsave('data/multiply/'+category+'/m'+str(frame_counts[i])+'.png', im)
+        im = cv2.imread('data/multiply/'+category+'/m'+str(frame_counts[i])+'.png')
+        im = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+        im_grays.append(im)
+    im_grays = np.array(im_grays)
+
+    # find correspondances on above images
+    pt0 = shiTomasiCornerDetector(im_grays[0],(6,6), 100, 0.3, 7)
     pt0 = pt0.reshape(len(pt0),2)
-    pt1, st, err = cv2.calcOpticalFlowPyrLK(im_gray0, im_gray1, pt0, None, **lk_params)
-    assert len(pt0) == len(pt1)
-    print pt0.shape
+    pts = []
+    pts.append(pt0)
+    for i in range(1,num_images):
+        pt, st, err = cv2.calcOpticalFlowPyrLK(im_grays[i-1], im_grays[i], pts[i-1], None, **lk_params)
+        pts.append(pt)
+    pts = np.array(pts)
+    num_detections = pts[-1].shape[0]
+    print "detected "+str(num_detections)+" points"
 
     # see if the detected points are good (uncomment to run it)
     '''
-    for i in pt1:
-        x,y = i
-        cv2.circle(im1, (x,y), 3, (0,255,0), -1)
-    # Show the cropped image
-    cv2.imshow("im1", im1)
+    view_image = num_images -1
+    im = im_grays[view_image]
+    for p in pts[view_image]:
+        x,y = p
+        cv2.circle(im, (x,y), 3, (255, 0,0), -1)
+    cv2.imshow("im", im)
     cv2.waitKey(0)
     '''
 
-
-
     ## affine SFM (uncomment to run it)
     '''
-    structure, motion  = factorization_method(pt0, pt1)
+    D = np.zeros((0,num_detections))
+    for pt in pts:
+        D = np.vstack([D, pt.T])
+    print D.shape
+    structure, motion  = factorization_method(D)
     
     fig = plt.figure()
     ax = fig.add_subplot(111, projection = '3d')
     scatter_3D_axis_equal(structure[0,:], structure[1,:], structure[2,:], ax)
-    ax.set_title('Factorization Method')
+    ax.set_title('Factorization Method for a '+ category)
     plt.show()
     '''
+    
 
 
     ## bundle adjustment with projective SFM
-    pt_0 = np.hstack((pt0,np.ones((len(pt0),1))))
-    pt_1 = np.hstack((pt1,np.ones((len(pt1),1))))
-    #F = normalized_eight_point_alg(pt_0, pt_1)
-    F = ransac_estimate_fundamental(pt_0, pt_1)
-
-    # calculate b for camera matrix M
-    _,_,v = np.linalg.svd(F)
-    b = v[-1:][0]
-    b_cross = np.array([0,-b[2],b[1], b[2], 0, -b[0], -b[1], b[0], 0]).reshape((3,3))
-    M = np.hstack((-b_cross.dot(F), b.reshape((3,1))))
-    camera_matrices = np.zeros((2, 3, 4))
+    # calculate f and M between pairs of cameras
+    
+    F =[]
+    camera_matrices = np.zeros((num_images, 3, 4))
     camera_matrices[0, :, :] = np.hstack((np.eye(3), np.zeros((3,1))))  # canonical camera
-    camera_matrices[1, :, :] = M
+    for i in range(1,num_images):
+        pt_0 = pts[i-1]
+        pt_1 = pts[i]
+        pt_0 = np.hstack((pt_0,np.ones((len(pt_0),1))))
+        pt_1 = np.hstack((pt_1,np.ones((len(pt_1),1))))
+        #f = normalized_eight_point_alg(pt_0, pt_1)
+        f = ransac_estimate_fundamental(pt_0, pt_1)
+        if len(F) == 0:F.append(f)
+        else: 
+            f = F[-1].dot(f)
+            f = f/f[2][2]
+            F.append(f)
+        # calculate b for camera matrix M between pair cameras
+
+        _,_,v = np.linalg.svd(f)
+        b = v[-1:][0]
+        b_cross = np.array([0,-b[2],b[1], b[2], 0, -b[0], -b[1], b[0], 0]).reshape((3,3))
+        M = np.hstack((-b_cross.dot(f), b.reshape((3,1))))
+        camera_matrices[i, :, :] = M
     
     # calculate 3D
     points_3d = []
-    print structure.shape
-    for i in range(len(pt0)):
-        pts = np.vstack((pt0[i], pt1[i]))
-        point_3d, e  = nonlinear_estimate_3d_point(pts, camera_matrices)
-        if all(error < 0.5 for error in e):
+    for i in range(num_detections):
+        pt_of_cameras = np.zeros((0,2))
+        for pt in pts:
+            pt_of_cameras = np.vstack((pt_of_cameras, pt[i]))
+        point_3d, e  = nonlinear_estimate_3d_point(pt_of_cameras, camera_matrices)
+        #print "error:"
+        #print e
+        #if all(np.abs(error) < 15 for error in e):
+        if all(isinstance(x, (int, long, float))for x in point_3d):
             points_3d.append(point_3d)
     points_3d = np.array(points_3d)
-    print "with "+str(len(points_3d)) + " total 3d points"
+    # remove outlier points
+    print "got "+str(len(points_3d)) + " total 3d points: "
     print points_3d
-    '''
-    print points_3d.max()
-    print points_3d.min()
-    print points_3d.mean()
-    print points_3d.std()
-    '''
+    median_points_3d = np.array([np.median(points_3d[:,0]),np.median(points_3d[:,1]),np.median(points_3d[:,2])])
+    points_3d_valid = []
+    diff_norms = []
+    for p in points_3d:
+        diff_norm = np.linalg.norm(p - median_points_3d)
+        diff_norms.append(diff_norm)
+    diff_norm_mean = np.median(diff_norms)
+    diff_norm_std = np.std(diff_norms)
+    print "median: "+str(diff_norm_mean)
+    print "std: "+str(diff_norm_std)
+    for i in range(len(points_3d)):
+        diff_norm = diff_norms[i]
+        if diff_norm <= diff_norm_mean+0*diff_norm_std:
+            points_3d_valid.append(points_3d[i])
+    points_3d_valid = np.array(points_3d_valid)
+    print "got "+str(len(points_3d_valid))+" valid 3d points:"
+
+    
+    #print points_3d.max()
+    #print points_3d.min()
+    #print points_3d.mean()
+    #print points_3d.std()
+    
 
     # plot 3D
     fig = plt.figure()
     ax = fig.gca(projection='3d')
-    ax.scatter(points_3d[:,0], points_3d[:,1], points_3d[:,2],
+    ax.scatter(points_3d_valid[:,0], points_3d_valid[:,1], points_3d_valid[:,2],
         c='k', depthshade=True, s=3)
     plt.show()
+    
